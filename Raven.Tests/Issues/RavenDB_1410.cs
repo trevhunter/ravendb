@@ -13,7 +13,7 @@ namespace Raven.Tests.Issues
     {
 
         [Fact]
-        public void Stream_Should_Not_Throw_Invalid_Index_If_None_Specified_In_Query()
+        public void Stream_Should_Not_Throw_Invalid_Index_If_No_Index_Specified_In_Query()
         {
             // Arrange
             var testObj = new TestDataObject() { Name = "Test1" };
@@ -45,6 +45,43 @@ namespace Raven.Tests.Issues
                             break; // Don't care about results - it would have thrown on MoveNext
                         }
                     });
+
+                // If we get here with no exception, we're good.
+            }
+
+        }
+
+        [Fact]
+        public void Stream_Should_Not_Throw_Invalid_Index_If_Index_Specified_In_Query()
+        {
+            // Arrange
+            var testObj = new TestDataObject() { Name = "Test1" };
+            var testObj1 = new TestDataObject() { Name = "Test2" };
+
+            using (var docStore = NewDocumentStore())
+            using (var session = docStore.OpenSession())
+            {
+                InsertTestData(session, testObj, testObj1);
+
+                // Act
+                var query = session.Query<TestDataObject>(new RavenDocumentsByEntityName().IndexName);
+
+                // Assert: (1) Underlying query doesn't throw and (2) Stream doesn't throw
+                Assert.DoesNotThrow(() =>
+                {
+                    var list = query.ToList();
+                });
+
+                var streamEnumerator = session.Advanced.Stream(query);
+
+                // Because we've forced an index name in the query, the stream should use that and not throw
+                Assert.DoesNotThrow(() =>
+                {
+                    while (streamEnumerator.MoveNext())
+                    {
+                        break; // Don't care about results - it would have thrown on MoveNext
+                    }
+                });
 
                 // If we get here with no exception, we're good.
             }
