@@ -526,27 +526,49 @@ namespace Raven.Client.Embedded
 				var task = Task.Factory.StartNew(() =>
 				{
 					bool setWaitHandle = true;
-					try
-					{
-						// we may be sending a LOT of documents to the user, and most 
-						// of them aren't going to be relevant for other ops, so we are going to skip
-						// the cache for that, to avoid filling it up very quickly
-						using (DocumentCacher.SkipSettingDocumentsInDocumentCache())
-						{
-							database.Query(index, query, information =>
-							{
-								localQueryHeaderInfo = information;
-								waitForHeaders.Set();
-								setWaitHandle = false;
-							}, items.Add);
-						}
-					}
-					catch (Exception)
-					{
-						if (setWaitHandle)
-							waitForHeaders.Set();
-						throw;
-					}
+                    try
+                    {
+                        // we may be sending a LOT of documents to the user, and most 
+                        // of them aren't going to be relevant for other ops, so we are going to skip
+                        // the cache for that, to avoid filling it up very quickly
+                        using (DocumentCacher.SkipSettingDocumentsInDocumentCache())
+                        {
+                            database.Query(index, query, information =>
+                            {
+                                localQueryHeaderInfo = information;
+                                waitForHeaders.Set();
+                                setWaitHandle = false;
+                            }, items.Add);
+                        }
+                    }
+                    catch (IndexDoesNotExistsException ex)
+                    {
+                        if (setWaitHandle)
+                            waitForHeaders.Set();
+
+                        // If the index does not exist, and the index expected is a default dynamic index
+                        // it likely means the user has not specified a specific index. See issue 1410 for more details.
+                        bool isDynamicIndex = index.StartsWith("dynamic/", StringComparison.OrdinalIgnoreCase) ||
+                               index.Equals("dynamic", StringComparison.OrdinalIgnoreCase);
+
+                        if (isDynamicIndex)
+                        {
+                            throw new InvalidOperationException(
+                                "A streaming query needs an existing index to query. Please ensure you compose the underlying query with a name of an existing index to use. Check the inner exception for more details on the missing index the query attempted to use.", 
+                                ex);
+                        }
+                        else
+                        {
+                            throw;
+                        }
+                    
+                    }
+                    catch (Exception)
+                    {
+                        if (setWaitHandle)
+                            waitForHeaders.Set();
+                        throw;
+                    }
 				}, TaskCreationOptions.LongRunning);
 				waitForHeaders.Wait();
 				queryHeaderInfo = localQueryHeaderInfo;
